@@ -45,21 +45,53 @@ export default {
   },
 
   // 获取首页数据
-  getHomeData() {
-    // 获取当前工号和日期
+  async getHomeData() {
+    // 获取当前工号
     const accountName = localStorage.getItem('token')
-    const currentDate = new Date().toISOString().split('T')[0]
+    
+    // 获取当前时区的日期，格式为yyyy-MM-dd
+    const formatDate = (date) => {
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+    
+    const currentDate = formatDate(new Date())
     
     // 返回mock数据
     // return Promise.resolve(['红烧肉','宫保鸡丁','鱼香肉丝',])
     
     // 如果需要切换回真实接口，可以注释掉上面的mock数据，使用下面的真实请求
-    return apiClient.get('/meicanTask/dishList', {
-      params: {
-        accountName,
-        date: currentDate
+    try {
+      // 首先尝试获取当天的数据
+      const response = await apiClient.get('/meicanTask/dishList', {
+        params: {
+          accountName,
+          date: currentDate
+        }
+      })
+      
+      // 如果当天有数据，直接返回
+      if (response && response.length > 0) {
+        return response
       }
-    })
+      
+      // 如果当天没有数据，尝试获取明天的数据
+      const tomorrow = new Date()
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      const tomorrowDate = formatDate(tomorrow)
+      
+      return apiClient.get('/meicanTask/dishList', {
+        params: {
+          accountName,
+          date: tomorrowDate
+        }
+      })
+    } catch (error) {
+      console.error('获取菜单数据失败:', error)
+      throw error
+    }
   },
 
   // 新增获取用户列表接口
@@ -67,9 +99,17 @@ export default {
     return apiClient.get('/meicanAccount/listAll')
   },
 
-  async getOrderHistory() {
+  async getOrderHistory(accountName = true) {
     try {
-      const response = await apiClient.get('/meicanTask/pageTask?pageNo=1&pageSize=100')
+      let url = '/meicanTask/pageTask?pageNo=1&pageSize=100';
+      
+      // 如果accountName为true，则添加当前登录token作为参数
+      if (accountName) {
+        const token = localStorage.getItem('token');
+        url += `&accountName=${token}`;
+      }
+      
+      const response = await apiClient.get(url);
       return response.records.map(item => ({
         orderId: item.uid,
         item: {
@@ -80,10 +120,10 @@ export default {
         status: item.orderStatus,
         createTime: item.createDate,
         errorMsg: item.errorMsg
-      }))
+      }));
     } catch (error) {
-      console.error('获取订单历史失败:', error)
-      throw error
+      console.error('获取订单历史失败:', error);
+      throw error;
     }
   },
 
@@ -260,4 +300,4 @@ export default {
       throw new Error('更新有效期失败，请稍后重试')
     }
   }
-} 
+}

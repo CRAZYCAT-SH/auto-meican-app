@@ -6,7 +6,7 @@
         <el-table-column
           prop="date"
           label="日期"
-          width="180"
+          :width="isMobile ? '120' : '180'"
           align="center"
         >
           <template #default="{ row }">
@@ -41,14 +41,24 @@
               </div>
             </template>
             <template v-else-if="isDateAvailable(row.date)">
-              <el-button
-                size="small"
-                type="primary"
-                default
-                @click="handleAddOrder(row.date)"
-              >
-                点餐
-              </el-button>
+              <div class="button-group">
+                <el-button
+                  size="small"
+                  type="primary"
+                  default
+                  @click="handleAddOrder(row.date)"
+                >
+                  点餐
+                </el-button>
+                <el-button
+                  size="small"
+                  type="info"
+                  default
+                  @click="handleLeaveRequest(row.date)"
+                >
+                  请假
+                </el-button>
+              </div>
             </template>
           </template>
         </el-table-column>
@@ -61,6 +71,7 @@
       title="选择菜品"
       :width="isMobile ? '90%' : '30%'"
       class="dish-dialog"
+      append-to-body
     >
       <div class="dish-list">
         <el-radio-group v-model="selectedDish">
@@ -81,9 +92,9 @@
         </span>
       </template>
     </el-dialog>
-
-    <!-- 提交订单按钮 -->
-    <div v-if="orderData && orderData.length > 0" class="submit-order">
+  </div>
+      <!-- 提交订单按钮 -->
+      <div v-if="orderData && orderData.length > 0" class="submit-order">
       <el-button
         type="primary"
         size="large"
@@ -92,7 +103,6 @@
         批量提交订单 ({{ orderData.length }})
       </el-button>
     </div>
-  </div>
 </template>
 
 <script>
@@ -102,6 +112,7 @@ import api from '@/api'
 
 export default {
   name: 'CalendarTab',
+  emits: ['update:orderData', 'submit-success', 'delete-order'],
   props: {
     orderData: {
       type: Array,
@@ -346,26 +357,69 @@ export default {
       }
     },
     handleDeleteOrder(order) {
-        console.info(order)
-      ElMessageBox.confirm('确定要删除该订单吗？', '删除订单', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(() => {
-        // 从 orderData 中移除该订单
-        if(order.orderId){
-        this.$emit('delete-order', order.orderId)
-        }else{
-            
-        console.info(this.orderData)
-            const updatedOrderData = this.orderData.filter(o => o.item !== order.dish)
-            this.$emit('update:orderData', updatedOrderData)
+      // 只有历史订单(有orderId)才显示确认弹窗
+      if (order.orderId) {
+        ElMessageBox.confirm('确定要删除该订单吗？', '删除订单', {
+          confirmButtonText: '确定',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }).then(() => {
+          // 删除历史订单
+          this.$emit('delete-order', order.orderId)
+          ElMessage.success('订单已删除')
+        }).catch(() => {
+          ElMessage.info('已取消删除')
+        })
+      } else {
+        // 当前订单直接删除，不显示弹窗
+        // 删除当前订单 - 只删除特定日期的特定菜品
+        const currentDate = this.formatDate(new Date())
+        const updatedOrderData = [...this.orderData]
+        
+        // 查找包含该菜品的订单
+        const orderIndex = updatedOrderData.findIndex(o => o.item === order.dish)
+        
+        if (orderIndex !== -1) {
+          // 如果该菜品订单只有一个日期，则删除整个订单
+          if (updatedOrderData[orderIndex].dates.length === 1) {
+            updatedOrderData.splice(orderIndex, 1)
+          } else {
+            // 否则只删除当前日期的订单
+            const dateToRemove = this.selectedDate ? this.formatDate(this.selectedDate) : currentDate
+            updatedOrderData[orderIndex].dates = updatedOrderData[orderIndex].dates.filter(
+              date => date !== dateToRemove
+            )
+          }
         }
+        
+        this.$emit('update:orderData', updatedOrderData)
         ElMessage.success('订单已删除')
-      }).catch(() => {
-        ElMessage.info('已取消删除')
-      })
-    }
+      }
+    },
+    handleLeaveRequest(date) {
+      const formattedDate = this.formatDate(date)
+      
+      let newOrderData = [...this.orderData]
+      const leaveRequest = {
+        item: "请假",
+        dates: [formattedDate]
+      }
+      
+      // 检查是否已经有相同日期的请假记录
+      const existingIndex = newOrderData.findIndex(
+        order => order.item === "请假" && order.dates.includes(formattedDate)
+      )
+      
+      if (existingIndex === -1) {
+        // 如果没有相同日期的请假记录，添加新记录
+        newOrderData.push(leaveRequest)
+        this.$emit('update:orderData', newOrderData)
+        ElMessage.success('已添加请假记录')
+      } else {
+        // 如果已有相同日期的请假记录，提示用户
+        ElMessage.info('该日期已有请假记录')
+      }
+    },
   }
 }
 </script>
@@ -375,13 +429,6 @@ export default {
   padding: 20px;
   position: relative;
   contain: content;
-
-  .submit-order {
-    margin-top: 20px;
-    padding-left: 16px;
-    display: flex;
-    align-items: left;
-  }
 }
 .dish-list {
   display: flex;
@@ -511,21 +558,26 @@ export default {
   font-size: 14px;
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-word;
+  line-height: 1.4;
+  padding: 2px 0;
 }
 
 .submit-order {
   position: fixed;
   bottom: 20px;
   right: 20px;
-  z-index: 100;
-  padding: 12px;
-  background-color: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-  contain: content;
+  padding: 10px 20px;
+  background: white;
+  border-radius: 25px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  transition: all 0.3s ease;
+}
+
+.submit-order:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
 }
 
 @media (max-width: 768px) {
@@ -545,21 +597,24 @@ export default {
   .order-info-container {
     padding: 2px;
     gap: 4px;
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .status-tag {
     font-size: 10px;
     padding: 1px 4px;
+    margin-bottom: 4px;
   }
 
   .dish-name {
     font-size: 12px;
-  }
-
-  .submit-order {
-    bottom: 10px;
-    right: 10px;
-    padding: 8px;
+    flex: 1;
+    width: 100%;
+    margin-bottom: 4px;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
   }
 
   :deep(.el-table__cell) {
@@ -570,5 +625,10 @@ export default {
     padding: 6px 12px;
     font-size: 12px;
   }
+}
+
+.button-group {
+  display: flex;
+  gap: 8px;
 }
 </style>
