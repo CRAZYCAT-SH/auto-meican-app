@@ -65,15 +65,16 @@
             </div>
           </el-tab-pane>
 
-          <el-tab-pane label="自动点餐" name="auto-order">
+          <el-tab-pane label="AI点餐" name="auto-order">
             <div class="tab-content" :class="slideClass">
               <AutoOrderTab 
                 :blacklist="blacklistDetail.noOrderDishes"
                 :expire-date="blacklistDetail.expireDate"
+                :likes="blacklistDetail.likes"
+                :restrictions="blacklistDetail.restrictions"
                 :available-dishes="getAvailableDishes()"
-                @add-to-blacklist="handleAddToBlacklist"
-                @remove-from-blacklist="handleRemoveFromBlacklist"
-                @update-expire-date="handleUpdateExpireDate"
+                @submit-all-changes="handleSubmitAllChanges"
+                @order-success="handleOrderSuccess"
               />
             </div>
           </el-tab-pane>
@@ -118,7 +119,9 @@ export default {
       isRefreshing: false,
       blacklistDetail: {
         noOrderDishes: [],
-        expireDate: null
+        expireDate: null,
+        likes: '',
+        restrictions: ''
       },
       slideClass: '', // 初始化slideClass
       slideDirection: 'none', // 滑动方向
@@ -242,38 +245,38 @@ export default {
         this.slideClass = '' // 重置动画类
       }, 300) // 动画持续时间
     },
-    async handleAddToBlacklist(dish) {
+    async handleSubmitAllChanges(data) {
       try {
-        await api.addToBlacklist(this.blacklistDetail.noOrderDishes, dish)
+        const token = localStorage.getItem('token')
+        await api.submitAllChanges({
+          accountName: token,
+          expireDate: data.expireDate,
+          likes: data.likes,
+          restrictions: data.restrictions,
+          noOrderDishes: data.noOrderDishes.join(',')
+        })
         
-        this.blacklistDetail.noOrderDishes = [...this.blacklistDetail.noOrderDishes, dish]
-        this.$message.success('添加成功')
-        await this.forceRefresh()
+        // 更新本地数据
+        this.blacklistDetail = {
+          noOrderDishes: data.noOrderDishes,
+          expireDate: data.expireDate,
+          likes: data.likes,
+          restrictions: data.restrictions
+        }
+        
+        ElMessage.success('保存成功')
       } catch (error) {
-        console.error('添加黑名单失败:', error)
-        this.$message.error('添加黑名单失败')
+        console.error('保存失败:', error)
+        ElMessage.error('保存失败')
+        throw error
       }
     },
-    async handleRemoveFromBlacklist(itemToRemove) {
+    async handleOrderSuccess() {
+      // 下单成功后刷新历史记录
       try {
-        await api.removeFromBlacklist(this.blacklistDetail.noOrderDishes, itemToRemove)
-        
-        this.blacklistDetail.noOrderDishes = this.blacklistDetail.noOrderDishes.filter(i => i !== itemToRemove)
-        await this.forceRefresh()
-        ElMessage.success('移除成功')
+        this.orderHistory = await api.getOrderHistory()
       } catch (error) {
-        ElMessage.error(error.message)
-      }
-    },
-    async handleUpdateExpireDate(newExpireDate) {
-      try {
-        // 确保日期格式正确
-        const formattedDate = new Date(newExpireDate).toISOString().split('T')[0];
-        await api.updateExpireDate(formattedDate);
-        await this.refreshCurrentTab();
-      } catch (error) {
-        console.error('更新有效期失败:', error);
-        ElMessage.error('更新有效期失败');
+        console.error('刷新订单历史失败:', error)
       }
     },
     getAvailableDishes() {

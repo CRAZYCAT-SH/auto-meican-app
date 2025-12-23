@@ -119,7 +119,8 @@ export default {
         dates: [item.orderDate],
         status: item.orderStatus,
         createTime: item.createDate,
-        errorMsg: item.errorMsg
+        errorMsg: item.errorMsg,
+        selectReason: item.selectReason || '' // 新增推荐理由字段
       }));
     } catch (error) {
       console.error('获取订单历史失败:', error);
@@ -133,11 +134,18 @@ export default {
 
   async submitOrder(order) {
     const token = localStorage.getItem('token')
-    return apiClient.post('/meicanTask/addTask', {
+    const requestData = {
       accountName: token,
       orderDish: order.orderDish,
       orderDate: order.orderDate
-    })
+    }
+    
+    // 如果有推荐理由,则添加到请求中
+    if (order.selectReason) {
+      requestData.selectReason = order.selectReason
+    }
+    
+    return apiClient.post('/meicanTask/addTask', requestData)
   },
 
   async addAccount(accountInfo) {
@@ -188,10 +196,15 @@ export default {
       // 2. 更新黑名单
       const updatedBlacklist = [...blacklist, newItem].join(',')
       
+      // 获取当前的likes和restrictions
+      const currentInfo = await this.getAutoOrderInfo()
+      
       return apiClient.post('/meicanAccount/addAccountDishCheck', {
         accountName: token,
         expireDate: expireDate,
-        noOrderDishes: updatedBlacklist
+        noOrderDishes: updatedBlacklist,
+        likes: currentInfo.likes || '',
+        restrictions: currentInfo.restrictions || ''
       })
     } catch (error) {
       console.error('添加黑名单失败:', error)
@@ -210,11 +223,16 @@ export default {
       const updatedBlacklist = blacklist
         .filter(item => item !== itemToRemove)
         .join(',')
+      
+      // 获取当前的likes和restrictions
+      const currentInfo = await this.getAutoOrderInfo()
         
       return apiClient.post('/meicanAccount/addAccountDishCheck', {
         accountName: token,
         expireDate: expireDate,
-        noOrderDishes: updatedBlacklist
+        noOrderDishes: updatedBlacklist,
+        likes: currentInfo.likes || '',
+        restrictions: currentInfo.restrictions || ''
       })
     } catch (error) {
       console.error('移除黑名单失败:', error)
@@ -233,7 +251,7 @@ export default {
       
       // 如果没有找到记录
       if (!userRecord) {
-        throw new Error('未找到用户的自动点餐记录，请在点餐检查维护自动点餐设置')
+        throw new Error('未找到用户的AI点餐记录，请在点餐检查维护AI点餐设置')
       }
       
       // 检查有效期
@@ -242,7 +260,7 @@ export default {
       
       // 如果记录已过期
       if (expireDate < currentDate) {
-        throw new Error('自动点餐记录已过期，请在点餐检查维护自动点餐设置')
+        throw new Error('AI点餐记录已过期，请在点餐检查维护AI点餐设置')
       }
       
       return {
@@ -250,7 +268,7 @@ export default {
         expireDate: userRecord.expireDate
       }
     } catch (error) {
-      console.error('获取自动点餐详情失败:', error)
+      console.error('获取AI点餐详情失败:', error)
       throw error
     }
   },
@@ -270,13 +288,15 @@ export default {
         }
       }
       
-      // 直接返回数据，不做验证
+      // 直接返回数据,不做验证
       return {
         noOrderDishes: userRecord.noOrderDishes?.split(',').map(dish => dish.trim()) || [],
-        expireDate: userRecord.expireDate
+        expireDate: userRecord.expireDate,
+        likes: userRecord.likes || '',
+        restrictions: userRecord.restrictions || ''
       }
     } catch (error) {
-      console.error('获取自动点餐详情失败:', error)
+      console.error('获取AI点餐详情失败:', error)
       throw error
     }
   },
@@ -291,13 +311,66 @@ export default {
       const response = await apiClient.post('/meicanAccount/addAccountDishCheck', {
         accountName: token,
         expireDate: formattedDate,
-        noOrderDishes: currentData.noOrderDishes.join(',')
+        noOrderDishes: currentData.noOrderDishes.join(','),
+        likes: currentData.likes || '',
+        restrictions: currentData.restrictions || ''
       })
       
       return response.data
     } catch (error) {
       console.error('更新有效期失败:', error)
       throw new Error('更新有效期失败，请稍后重试')
+    }
+  },
+  async updatePreferences(likes, restrictions) {
+    try {
+      const token = localStorage.getItem('token')
+      const currentData = await this.getAutoOrderInfo()
+      
+      const response = await apiClient.post('/meicanAccount/addAccountDishCheck', {
+        accountName: token,
+        expireDate: currentData.expireDate,
+        noOrderDishes: currentData.noOrderDishes.join(','),
+        likes: likes || '',
+        restrictions: restrictions || ''
+      })
+      
+      return response.data
+    } catch (error) {
+      console.error('更新偏好设置失败:', error)
+      throw new Error('更新偏好设置失败，请稍后重试')
+    }
+  },
+  async submitAllChanges(data) {
+    try {
+      const response = await apiClient.post('/meicanAccount/addAccountDishCheck', {
+        accountName: data.accountName,
+        expireDate: data.expireDate,
+        noOrderDishes: data.noOrderDishes,
+        likes: data.likes || '',
+        restrictions: data.restrictions || ''
+      })
+      
+      return response.data
+    } catch (error) {
+      console.error('保存失败:', error)
+      throw new Error('保存失败，请稍后重试')
+    }
+  },
+  async recommendDish(accountName, orderDate, recentRecommend = '') {
+    try {
+      const response = await apiClient.get('/meicanTask/recommendDish', {
+        params: {
+          accountName,
+          orderDate,
+          recentRecommend
+        },
+        timeout: 30000 // 设置30秒超时时间
+      })
+      return response
+    } catch (error) {
+      console.error('获取推荐菜品失败:', error)
+      throw new Error('获取推荐菜品失败,请稍后重试')
     }
   }
 }

@@ -21,6 +21,10 @@
         <div class="dish">{{ order.item.name }}</div>
         <div class="date">日期：{{ order.dates.join(', ') }}</div>
         <div class="time">创建时间：{{ formatDateTime(order.createTime) }}</div>
+        <div v-if="order.selectReason" class="select-reason">
+          <label>推荐理由：</label>
+          <span>{{ order.selectReason }}</span>
+        </div>
       </div>
     </div>
   </div>
@@ -162,6 +166,32 @@ export default {
   font-size: 14px;
   color: $info-color;
   margin-bottom: 8px;
+}
+
+.select-reason {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f0f9ff;
+  border-left: 3px solid #409eff;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1.6;
+
+  label {
+    font-weight: 600;
+    color: #409eff;
+    margin-right: 4px;
+  }
+
+  span {
+    color: #606266;
+  }
+
+  @media (max-width: 768px) {
+    margin-top: 8px;
+    padding: 10px;
+    font-size: 13px;
+  }
 }
 
 .status {
