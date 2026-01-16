@@ -56,15 +56,6 @@
             </div>
           </el-tab-pane>
 
-          <el-tab-pane label="订单历史" name="history">
-            <div class="tab-content" :class="slideClass">
-              <HistoryTab 
-                :order-history="orderHistory"
-                @delete-order="handleDeleteOrder"
-              />
-            </div>
-          </el-tab-pane>
-
           <el-tab-pane label="AI点餐" name="auto-order">
             <div class="tab-content" :class="slideClass">
               <AutoOrderTab 
@@ -75,6 +66,15 @@
                 :available-dishes="getAvailableDishes()"
                 @submit-all-changes="handleSubmitAllChanges"
                 @order-success="handleOrderSuccess"
+              />
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="订单历史" name="history">
+            <div class="tab-content" :class="slideClass">
+              <HistoryTab 
+                :order-history="orderHistory"
+                @delete-order="handleDeleteOrder"
               />
             </div>
           </el-tab-pane>
@@ -125,7 +125,9 @@ export default {
       },
       slideClass: '', // 初始化slideClass
       slideDirection: 'none', // 滑动方向
-      isAnimating: false      // 是否正在动画中
+      isAnimating: false,      // 是否正在动画中
+      tabHeaderStartX: 0, // Tab头部滑动起始位置
+      tabHeaderIsSwiping: false // Tab头部是否正在滑动
     }
   },
   async created() {
@@ -226,7 +228,7 @@ export default {
       this.slideClass = direction === 'next' ? 'slide-left' : 'slide-right';
       
       // 定义所有tab的顺序
-      const tabs = ['calendar','home', 'history', 'auto-order']
+      const tabs = ['calendar','home', 'auto-order', 'history']
       const currentIndex = tabs.indexOf(this.activeTab)
       let newIndex
 
@@ -280,12 +282,20 @@ export default {
       }
     },
     getAvailableDishes() {
-      // 从homeData中提取所有菜品名称
+      // 从 homeData 中提取所有菜品名称和餐厅信息
       if (!this.homeData) return [];
       
+      // 如果 homeData 是对象数组(新格式),直接返回
+      if (this.homeData.length > 0 && typeof this.homeData[0] === 'object' && this.homeData[0].name) {
+        return this.homeData;
+      }
+      
+      // 如果是字符串数组(旧格式),转换为新格式
       const dishes = new Set();
       this.homeData.forEach(item => {
-        dishes.add(item);
+        if (typeof item === 'string') {
+          dishes.add(item);
+        }
       });
       
       return Array.from(dishes).sort();
@@ -307,6 +317,44 @@ export default {
     handleUpdateOrderData(newOrderData) {
       console.log('父组件接收到的新orderData:', newOrderData) // 调试信息
       this.orderData = newOrderData
+    },
+    // Tab头部滑动开始
+    onTabHeaderTouchStart(e) {
+      if (window.innerWidth > 768) return
+      this.tabHeaderStartX = e.touches[0].pageX
+      this.tabHeaderIsSwiping = true
+    },
+    // Tab头部滑动中
+    onTabHeaderTouchMove(e) {
+      if (!this.tabHeaderIsSwiping || window.innerWidth > 768) return
+      // 阻止默认滑动行为
+      e.preventDefault()
+    },
+    // Tab头部滑动结束
+    onTabHeaderTouchEnd(e) {
+      if (!this.tabHeaderIsSwiping || window.innerWidth > 768) return
+      
+      const endX = e.changedTouches[0].pageX
+      const deltaX = endX - this.tabHeaderStartX
+      const minSwipeDistance = 50 // 最小滑动距离
+      
+      if (Math.abs(deltaX) > minSwipeDistance) {
+        const tabs = ['calendar', 'home', 'auto-order', 'history']
+        const currentIndex = tabs.indexOf(this.activeTab)
+        let newIndex
+        
+        if (deltaX > 0) {
+          // 向右滑，切换到上一个tab
+          newIndex = (currentIndex - 1 + tabs.length) % tabs.length
+        } else {
+          // 向左滑，切换到下一个tab
+          newIndex = (currentIndex + 1) % tabs.length
+        }
+        
+        this.activeTab = tabs[newIndex]
+      }
+      
+      this.tabHeaderIsSwiping = false
     }
   },
   setup() {
@@ -389,12 +437,26 @@ export default {
     el.addEventListener('touchstart', this.onTouchStart)
     el.addEventListener('touchmove', this.onTouchMove)
     el.addEventListener('touchend', this.onTouchEnd)
+    
+    // 为Tab头部添加滑动事件
+    const tabHeader = this.$el.querySelector('.el-tabs__nav-wrap')
+    if (tabHeader) {
+      tabHeader.addEventListener('touchstart', this.onTabHeaderTouchStart, { passive: false })
+      tabHeader.addEventListener('touchmove', this.onTabHeaderTouchMove, { passive: false })
+      tabHeader.addEventListener('touchend', this.onTabHeaderTouchEnd)
+    }
 
     // 清理事件监听器
     onBeforeUnmount(() => {
       el.removeEventListener('touchstart', this.onTouchStart)
       el.removeEventListener('touchmove', this.onTouchMove)
       el.removeEventListener('touchend', this.onTouchEnd)
+      
+      if (tabHeader) {
+        tabHeader.removeEventListener('touchstart', this.onTabHeaderTouchStart)
+        tabHeader.removeEventListener('touchmove', this.onTabHeaderTouchMove)
+        tabHeader.removeEventListener('touchend', this.onTabHeaderTouchEnd)
+      }
     })
   }
 }
@@ -518,11 +580,24 @@ export default {
     background: #f5f7fa;
     border-radius: 8px;
     padding: 0 16px;
+    user-select: none; // 禁止文本选中
+    -webkit-user-select: none;
+    touch-action: pan-x; // 允许水平滑动
   }
 
-  :deep(.el-tabs__nav-wrap::after) {
-    height: 1px;
-    background-color: #e4e7ed;
+  :deep(.el-tabs__nav-wrap) {
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: grab;
+    
+    &:active {
+      cursor: grabbing;
+    }
+    
+    &::after {
+      height: 1px;
+      background-color: #e4e7ed;
+    }
   }
 
   :deep(.el-tabs__item) {

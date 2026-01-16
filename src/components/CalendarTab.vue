@@ -34,7 +34,7 @@
                   size="small"
                   type="danger"
                   link
-                  @click="handleDeleteOrder(row.order)"
+                  @click="handleDeleteOrder(row.order, row.date)"
                 >
                   删除
                 </el-button>
@@ -76,12 +76,18 @@
       <div class="dish-list">
         <el-radio-group v-model="selectedDish">
           <el-radio
-            v-for="dish in availableDishes"
-            :key="dish"
-            :value="dish"
-            :disabled="isBlacklisted(dish)"
+            v-for="dish in displayDishes"
+            :key="getDishKey(dish)"
+            :value="getDishValue(dish)"
+            :disabled="isBlacklisted(getDishValue(dish))"
+            class="dish-radio-item"
           >
-            {{ dish }}
+            <div class="dish-content">
+              <div class="dish-name">{{ getDishName(dish) }}</div>
+              <div v-if="getRestaurantInfo(dish)" class="restaurant-info">
+                <span class="restaurant-name">{{ getRestaurantInfo(dish).name }}</span>
+              </div>
+            </div>
           </el-radio>
         </el-radio-group>
       </div>
@@ -137,7 +143,8 @@ export default {
       dialogVisible: false,
       selectedDate: null,
       selectedDish: '',
-      availableDishes: [],
+      availableDishes: [], // 菜品名称列表（用于提交）
+      dishesWithRestaurant: [], // 带餐厅信息的菜品列表（用于展示）
       viewType: 'week',
       weekDays: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'],
       isMobile: false
@@ -180,17 +187,68 @@ export default {
       }
 
       return groupedData
+    },
+    // 显示菜品列表（带餐厅信息）
+    displayDishes() {
+      // 如果有带餐厅信息的数据，使用它
+      if (this.dishesWithRestaurant && this.dishesWithRestaurant.length > 0) {
+        return this.dishesWithRestaurant
+      }
+      // 否则使用普通菜品名称列表
+      return this.availableDishes
     }
   },
   watch: {
     homeData: {
       immediate: true,
       handler(newVal) {
-        this.availableDishes = Array.isArray(newVal) ? newVal : []
+        // 处理新旧数据格式
+        if (Array.isArray(newVal) && newVal.length > 0) {
+          if (typeof newVal[0] === 'object' && newVal[0].name) {
+            // 新格式：同时保存原始数据和菜品名称
+            this.dishesWithRestaurant = newVal
+            this.availableDishes = newVal.map(item => item.name)
+          } else {
+            // 旧格式：直接使用
+            this.dishesWithRestaurant = []
+            this.availableDishes = newVal
+          }
+        } else {
+          this.dishesWithRestaurant = []
+          this.availableDishes = []
+        }
       }
     }
   },
   methods: {
+    // 获取菜品名称
+    getDishName(dish) {
+      if (typeof dish === 'object' && dish.name) {
+        return dish.name
+      }
+      return dish
+    },
+    // 获取菜品key
+    getDishKey(dish) {
+      if (typeof dish === 'object' && dish.id) {
+        return dish.id
+      }
+      return dish
+    },
+    // 获取菜品值（用于提交）
+    getDishValue(dish) {
+      if (typeof dish === 'object' && dish.name) {
+        return dish.name
+      }
+      return dish
+    },
+    // 获取餐厅信息
+    getRestaurantInfo(dish) {
+      if (typeof dish === 'object' && dish.restaurant) {
+        return dish.restaurant
+      }
+      return null
+    },
     formatFullDate(date) {
       return `${date.getMonth() + 1}月${date.getDate()}日 ${this.weekDays[date.getDay()]}`
     },
@@ -356,7 +414,7 @@ export default {
           return `第 ${weekIndex + 1} 周`;
       }
     },
-    handleDeleteOrder(order) {
+    handleDeleteOrder(order, date) {
       // 只有历史订单(有orderId)才显示确认弹窗
       if (order.orderId) {
         ElMessageBox.confirm('确定要删除该订单吗？', '删除订单', {
@@ -366,14 +424,13 @@ export default {
         }).then(() => {
           // 删除历史订单
           this.$emit('delete-order', order.orderId)
-          ElMessage.success('订单已删除')
         }).catch(() => {
-          ElMessage.info('已取消删除')
+          // 用户取消时不处理
         })
       } else {
         // 当前订单直接删除，不显示弹窗
         // 删除当前订单 - 只删除特定日期的特定菜品
-        const currentDate = this.formatDate(new Date())
+        const dateToRemove = this.formatDate(date)
         const updatedOrderData = [...this.orderData]
         
         // 查找包含该菜品的订单
@@ -385,9 +442,8 @@ export default {
             updatedOrderData.splice(orderIndex, 1)
           } else {
             // 否则只删除当前日期的订单
-            const dateToRemove = this.selectedDate ? this.formatDate(this.selectedDate) : currentDate
             updatedOrderData[orderIndex].dates = updatedOrderData[orderIndex].dates.filter(
-              date => date !== dateToRemove
+              d => d !== dateToRemove
             )
           }
         }
@@ -460,15 +516,57 @@ export default {
   :deep(.el-radio) {
     white-space: normal;
     height: auto;
-    padding: 8px;
+    padding: 12px;
     margin-right: 0;
+    margin-bottom: 8px;
     width: 100%;
     box-sizing: border-box;
+    border: 1px solid #dcdfe6;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+
+    &:hover {
+      border-color: #409eff;
+      background-color: #f0f9ff;
+    }
+
+    &.is-checked {
+      border-color: #409eff;
+      background-color: #ecf5ff;
+    }
 
     .el-radio__label {
-      white-space: pre-wrap;
-      word-break: break-all;
-      line-height: 1.4;
+      width: 100%;
+      padding-left: 8px;
+    }
+  }
+}
+
+.dish-radio-item {
+  width: 100%;
+}
+
+.dish-content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  .dish-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #303133;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+
+  .restaurant-info {
+    padding-top: 4px;
+
+    .restaurant-name {
+      font-size: 13px;
+      color: #606266;
+      font-weight: 500;
     }
   }
 }
@@ -482,9 +580,8 @@ export default {
     .el-radio {
       margin-bottom: 12px;
       font-size: 14px;
-      padding: 8px;
-      border-radius: 4px;
-      background-color: #f5f7fa;
+      padding: 10px;
+      border-radius: 6px;
       
       &:last-child {
         margin-bottom: 0;
@@ -498,6 +595,18 @@ export default {
       
       .el-button {
         flex: 1;
+      }
+    }
+  }
+
+  .dish-content {
+    .dish-name {
+      font-size: 14px;
+    }
+
+    .restaurant-info {
+      .restaurant-name {
+        font-size: 12px;
       }
     }
   }

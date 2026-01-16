@@ -56,10 +56,10 @@
               :loading="!availableDishes"
             >
               <el-option
-                v-for="dish in availableDishes"
-                :key="dish"
-                :label="dish"
-                :value="dish"
+                v-for="dish in displayDishes"
+                :key="getDishKey(dish)"
+                :label="getDishLabel(dish)"
+                :value="getDishValue(dish)"
               />
             </el-select>
             <el-button 
@@ -97,10 +97,10 @@
       </el-button>
     </div>
 
-    <!-- 试试效果按钮 -->
+    <!-- AI推荐按钮 -->
     <div v-if="canUseRecommend" class="test-section">
       <el-button type="success" size="large" @click="handleTestRecommend" :loading="isTesting">
-        试试效果
+        AI智能推荐
       </el-button>
     </div>
 
@@ -128,7 +128,7 @@
           type="primary" 
           @click="handleOrderRecommendDish"
         >
-          直接下单
+          立即点餐
         </el-button>
       </template>
     </el-dialog>
@@ -225,6 +225,28 @@ export default {
     }
   },
   methods: {
+    // 获取菜品的key
+    getDishKey(dish) {
+      if (typeof dish === 'object' && dish.id) {
+        return dish.id
+      }
+      return dish
+    },
+    // 获取菜品的显示标签（包含餐厅名称）
+    getDishLabel(dish) {
+      if (typeof dish === 'object' && dish.name) {
+        const restaurantName = dish.restaurant?.name || '未知餐厅'
+        return `${dish.name} - ${restaurantName}`
+      }
+      return dish
+    },
+    // 获取菜品的值（只返回菜品名称）
+    getDishValue(dish) {
+      if (typeof dish === 'object' && dish.name) {
+        return dish.name
+      }
+      return dish
+    },
     markAsChanged() {
       this.hasChanges = true
     },
@@ -413,6 +435,22 @@ export default {
       }
       
       return true
+    },
+    // 处理显示的菜品列表，兼容新旧格式
+    displayDishes() {
+      if (!this.availableDishes || this.availableDishes.length === 0) {
+        return []
+      }
+      
+      // 检查是新格式(对象数组)还是旧格式(字符串数组)
+      const firstItem = this.availableDishes[0]
+      if (typeof firstItem === 'object' && firstItem.name) {
+        // 新格式：有餐厅信息的菜品对象
+        return this.availableDishes
+      } else {
+        // 旧格式：字符串数组
+        return this.availableDishes
+      }
     }
   }
 }

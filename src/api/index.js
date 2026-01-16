@@ -44,7 +44,7 @@ export default {
     return {'token':credentials.username}
   },
 
-  // 获取首页数据
+  // 获取首页数据（带餐厅信息）
   async getHomeData() {
     // 获取当前工号
     const accountName = localStorage.getItem('token')
@@ -59,13 +59,10 @@ export default {
     
     const currentDate = formatDate(new Date())
     
-    // 返回mock数据
-    // return Promise.resolve(['红烧肉','宫保鸡丁','鱼香肉丝',])
-    
-    // 如果需要切换回真实接口，可以注释掉上面的mock数据，使用下面的真实请求
+    // 使用新接口获取带餐厅信息的菜品数据
     try {
       // 首先尝试获取当天的数据
-      const response = await apiClient.get('/meicanTask/dishList', {
+      const response = await apiClient.get('/meicanTask/restaurantDishList', {
         params: {
           accountName,
           date: currentDate
@@ -82,7 +79,7 @@ export default {
       tomorrow.setDate(tomorrow.getDate() + 1)
       const tomorrowDate = formatDate(tomorrow)
       
-      return apiClient.get('/meicanTask/dishList', {
+      return apiClient.get('/meicanTask/restaurantDishList', {
         params: {
           accountName,
           date: tomorrowDate
@@ -90,6 +87,21 @@ export default {
       })
     } catch (error) {
       console.error('获取菜单数据失败:', error)
+      throw error
+    }
+  },
+
+  // 获取餐厅菜品列表（新增专用接口）
+  async getRestaurantDishList(accountName, date) {
+    try {
+      return apiClient.get('/meicanTask/restaurantDishList', {
+        params: {
+          accountName,
+          date
+        }
+      })
+    } catch (error) {
+      console.error('获取餐厅菜品列表失败:', error)
       throw error
     }
   },

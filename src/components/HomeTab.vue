@@ -6,25 +6,34 @@
         <!-- 正常菜品列表 -->
         <div 
           v-for="(item, index) in homeData" 
-          :key="index"
+          :key="getDishKey(item, index)"
           class="data-item"
           :class="{
-            selected: selectedItem === item,
-            disabled: isBlacklisted(item)
+            selected: selectedItem === getDishName(item),
+            disabled: isBlacklisted(getDishName(item))
           }"
-          @click="!isBlacklisted(item) && handleItemClick($event, item)"
+          @click="!isBlacklisted(getDishName(item)) && handleItemClick($event, item)"
         >
-          <pre class="item-content">{{ item }}</pre>
+          <div class="item-content-wrapper">
+            <div class="dish-info">
+              <div class="dish-name">{{ getDishName(item) }}</div>
+              <div v-if="getRestaurantInfo(item)" class="restaurant-info">
+                <span class="restaurant-name">{{ getRestaurantInfo(item).name }}</span>
+              </div>
+            </div>
+          </div>
           <div v-if="getSelectedDates(item)" class="selected-dates">
             <span>已选日期：</span>
             <div class="date-tags">
               <el-tag
-                v-for="(date, i) in getSelectedDates(item)"
+                v-for="(dateInfo, i) in getSelectedDates(item)"
                 :key="i"
                 size="small"
                 class="date-tag"
+                closable
+                @close="handleRemoveDate(item, dateInfo)"
               >
-                {{ date }}
+                {{ dateInfo.display }}
               </el-tag>
             </div>
           </div>
@@ -39,7 +48,7 @@
               清空
             </el-button>
             <el-button
-              v-if="isBlacklisted(item)"
+              v-if="isBlacklisted(getDishName(item))"
               type="danger"
               size="small"
               @click.stop="handleUnblacklist(item)"
@@ -154,9 +163,31 @@ export default {
     window.removeEventListener('resize', this.handleResize)
   },
   methods: {
+    // 获取菜品名称（兼容新旧格式）
+    getDishName(item) {
+      if (typeof item === 'object' && item.name) {
+        return item.name
+      }
+      return item
+    },
+    // 获取菜品key
+    getDishKey(item, index) {
+      if (typeof item === 'object' && item.id) {
+        return item.id
+      }
+      return index
+    },
+    // 获取餐厅信息
+    getRestaurantInfo(item) {
+      if (typeof item === 'object' && item.restaurant) {
+        return item.restaurant
+      }
+      return null
+    },
     handleItemClick(event, item) {
-      if (this.isBlacklisted(item)) return
-      this.currentItem = item
+      const dishName = this.getDishName(item)
+      if (this.isBlacklisted(dishName)) return
+      this.currentItem = dishName
       this.selectedDates = []
       this.availableDates = this.getAvailableDates()
       this.datePickerVisible = true
@@ -199,9 +230,15 @@ export default {
       ElMessage.success('日期选择完成')
     },
     getSelectedDates(item) {
-      const order = this.orderData.find(order => order.item === item)
+      const dishName = this.getDishName(item)
+      const order = this.orderData.find(order => order.item === dishName)
       if (order && order.dates.length > 0) {
-        return order.dates.map(date => this.formatDate(date))
+        // 返回包含完整日期信息的对象数组
+        return order.dates.map(dateStr => ({
+          dateStr,  // 存储格式: "2024-12-25"
+          display: this.formatDate(dateStr),  // 显示格式: "12-25 周三"
+          dateObj: new Date(dateStr)  // Date对象
+        }))
       }
       return null
     },
@@ -301,9 +338,10 @@ export default {
     
     // 拉黑菜品
     async handleBlacklist(item) {
+      const dishName = this.getDishName(item)
       try {
-        await api.addToBlacklist(this.blacklist, item)
-        this.blacklist = [...this.blacklist, item]
+        await api.addToBlacklist(this.blacklist, dishName)
+        this.blacklist = [...this.blacklist, dishName]
         ElMessage.success('拉黑成功')
       } catch (error) {
         console.error('拉黑失败:', error)
@@ -313,9 +351,10 @@ export default {
     
     // 取消拉黑
     async handleUnblacklist(item) {
+      const dishName = this.getDishName(item)
       try {
-        await api.removeFromBlacklist(this.blacklist, item)
-        this.blacklist = this.blacklist.filter(i => i !== item)
+        await api.removeFromBlacklist(this.blacklist, dishName)
+        this.blacklist = this.blacklist.filter(i => i !== dishName)
         ElMessage.success('取消拉黑成功')
       } catch (error) {
         console.error('取消拉黑失败:', error)
@@ -324,9 +363,36 @@ export default {
     },
     
     handleClearDates(item) {
-      const newOrderData = this.orderData.filter(order => order.item !== item)
+      const dishName = this.getDishName(item)
+      const newOrderData = this.orderData.filter(order => order.item !== dishName)
       this.$emit('update:orderData', newOrderData)
       ElMessage.success('已清空该菜品的日期选择')
+    },
+    // 删除单个日期
+    handleRemoveDate(item, dateInfo) {
+      const dishName = this.getDishName(item)
+      const newOrderData = [...this.orderData]
+      
+      // 查找该菜品的订单
+      const orderIndex = newOrderData.findIndex(order => order.item === dishName)
+      
+      if (orderIndex !== -1) {
+        // 直接使用存储格式的日期字符串
+        const dateToRemove = dateInfo.dateStr
+        
+        // 过滤掉该日期
+        newOrderData[orderIndex].dates = newOrderData[orderIndex].dates.filter(
+          date => date !== dateToRemove
+        )
+        
+        // 如果没有日期了，删除整个订单
+        if (newOrderData[orderIndex].dates.length === 0) {
+          newOrderData.splice(orderIndex, 1)
+        }
+        
+        this.$emit('update:orderData', newOrderData)
+        ElMessage.success('已删除该日期')
+      }
     },
     getAvailableDates() {
       const dates = [];
@@ -495,6 +561,39 @@ export default {
     font-size: 13px;
     max-height: 100px;
     margin-bottom: 6px;
+  }
+}
+
+.item-content-wrapper {
+  flex-grow: 1;
+  margin-bottom: 8px;
+}
+
+.dish-info {
+  .dish-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: #303133;
+    margin-bottom: 8px;
+    line-height: 1.4;
+    word-break: break-word;
+    @media (max-width: 768px) {
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+  }
+  
+  .restaurant-info {
+    padding: 6px 0;
+    
+    .restaurant-name {
+      font-size: 13px;
+      color: #606266;
+      font-weight: 500;
+      @media (max-width: 768px) {
+        font-size: 12px;
+      }
+    }
   }
 }
 
