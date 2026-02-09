@@ -1,5 +1,18 @@
 <template>
   <div class="calendar-tab">
+    <!-- 加载上一周按钮 -->
+    <div class="load-more-container load-previous">
+      <el-button
+        type="primary"
+        text
+        size="small"
+        @click="loadPreviousWeek"
+      >
+        <el-icon><ArrowUp /></el-icon>
+        加载上一周
+      </el-button>
+    </div>
+
     <div v-for="(weekData, weekIndex) in groupedCalendarData" :key="weekIndex" class="week-container">
       <h3 class="week-title">{{ getWeekTitle(weekIndex) }}</h3>
       <el-table :data="weekData" :border="true" class="calendar-table">
@@ -65,6 +78,19 @@
       </el-table>
     </div>
 
+    <!-- 加载更多周按钮 -->
+    <div class="load-more-container load-next">
+      <el-button
+        type="primary"
+        text
+        size="small"
+        @click="loadMoreWeeks"
+      >
+        加载下一周
+        <el-icon><ArrowDown /></el-icon>
+      </el-button>
+    </div>
+
     <!-- 点餐对话框 -->
     <el-dialog
       v-model="dialogVisible"
@@ -114,10 +140,15 @@
 <script>
 import { ElMessage } from 'element-plus'
 import { ElMessageBox } from 'element-plus'
+import { ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import api from '@/api'
 
 export default {
   name: 'CalendarTab',
+  components: {
+    ArrowUp,
+    ArrowDown
+  },
   emits: ['update:orderData', 'submit-success', 'delete-order'],
   props: {
     orderData: {
@@ -147,7 +178,9 @@ export default {
       dishesWithRestaurant: [], // 带餐厅信息的菜品列表（用于展示）
       viewType: 'week',
       weekDays: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'],
-      isMobile: false
+      isMobile: false,
+      weeksToShow: 2, // 初始显示2周
+      weekOffset: 0 // 周偏移量，0表示从本周开始
     }
   },
   mounted() {
@@ -169,8 +202,11 @@ export default {
       const dayOfWeek = startDate.getDay()
       const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
       startDate.setDate(startDate.getDate() + diff)
+      
+      // 应用周偏移
+      startDate.setDate(startDate.getDate() + (this.weekOffset * 7))
 
-      const weeks = this.viewType === 'week' ? 2 : this.getWeeksInMonth(today)
+      const weeks = this.weeksToShow
       const groupedData = []
 
       for (let week = 0; week < weeks; week++) {
@@ -403,16 +439,34 @@ export default {
       }
     },
     getWeekTitle(weekIndex) {
-      switch (weekIndex) {
+      const actualWeekIndex = weekIndex + this.weekOffset
+      switch (actualWeekIndex) {
         case 0:
           return '本周';
         case 1:
           return '下周';
         case 2:
           return '下下周';
+        case -1:
+          return '上周';
+        case -2:
+          return '上上周';
         default:
-          return `第 ${weekIndex + 1} 周`;
+          if (actualWeekIndex > 0) {
+            return `第 ${actualWeekIndex + 1} 周`;
+          } else {
+            return `前 ${Math.abs(actualWeekIndex)} 周`;
+          }
       }
+    },
+    loadMoreWeeks() {
+      this.weeksToShow += 1
+      ElMessage.success('已加载更多周')
+    },
+    loadPreviousWeek() {
+      this.weekOffset -= 1
+      this.weeksToShow += 1
+      ElMessage.success('已加载上一周')
     },
     handleDeleteOrder(order, date) {
       // 只有历史订单(有orderId)才显示确认弹窗
@@ -739,5 +793,50 @@ export default {
 .button-group {
   display: flex;
   gap: 8px;
+}
+
+.load-more-container {
+  width: 100%;
+  display: flex;
+  justify-content: flex-start;
+  padding: 4px 0;
+  
+  .el-button {
+    font-size: 13px;
+    color: #909399;
+    transition: all 0.3s ease;
+    padding: 4px 8px;
+    height: auto;
+    
+    &:hover {
+      color: #409eff;
+      transform: translateY(-1px);
+    }
+    
+    .el-icon {
+      font-size: 14px;
+    }
+  }
+}
+
+.load-previous {
+  margin-bottom: 2px;
+  border-bottom: 1px dashed #e4e7ed;
+}
+
+.load-next {
+  margin-top: 2px;
+  border-top: 1px dashed #e4e7ed;
+}
+
+@media (max-width: 768px) {
+  .load-more-container {
+    padding: 3px 0;
+    
+    .el-button {
+      font-size: 12px;
+      padding: 3px 6px;
+    }
+  }
 }
 </style>
